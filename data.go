@@ -4,8 +4,6 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"io/ioutil"
-	"log"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,18 +26,15 @@ var config struct {
 	mutex           sync.Mutex
 }
 
-const maxReportPasswords = 10000
 const minMsForPasswordCheck = 100
 
 // Lock the mutex before calling
 func readConfig(filename string) {
 	configJSON, err := ioutil.ReadFile(filename)
 	if err != nil {
-		log.Println("Could not open config file. Attempting to write one.")
 		writeConfig(filename)
-		log.Println("You should have a config.json in the same folder " +
-			"as this executable. Fill in appropriate values.")
-		os.Exit(2)
+		panic("No config file was found. One has been created in the " +
+			"same folder as this executable")
 	}
 
 	err = json.Unmarshal(configJSON, &config)
@@ -53,14 +48,6 @@ func readConfig(filename string) {
 
 // Lock the mutex before calling
 func writeConfig(filename string) {
-	// verify that we don't have a crazy number of report passwords
-	// this could happen in a DoS attack. This will allow old reports
-	// to keep working if that happens, but new ones won't generate
-	// passwords.
-	if len(config.ReportPasswords) > maxReportPasswords {
-		panic("Too many report passwords. This might indicate a DoS attack.")
-	}
-
 	configJSON, err := json.MarshalIndent(config, "", "\t") //nolint
 	jgh.PanicOnErr(err)
 	err = ioutil.WriteFile(filename, configJSON, 0600)
@@ -77,51 +64,61 @@ func pathToString(path []string) string {
 }
 
 // Lock the mutex before calling
-func reportPassword(path []string) string {
+func createReportPassword(path []string) {
 	pathString := pathToString(path)
-	if password, exists := config.ReportPasswords[pathString]; exists {
-		return password
-	} else {
-		// there was no existing password. generate one
-		password = jgh.RandomString(64)
-		config.ReportPasswords[pathString] = password
 
-		// we modified the config, save it back to disk
-		writeConfig(config.configPath)
-
-		return password
+	// panic if we were asked to create a password for a
+	// report that already has one
+	if _, exists := config.ReportPasswords[pathString]; exists {
+		panic("Report password already exists for given path")
 	}
+
+	password := jgh.RandomString(64)
+	config.ReportPasswords[pathString] = password
+
+	// we modified the config, save it back to disk
+	writeConfig(config.configPath)
 }
 
-// this checks is a password is valid for a given path. If not one will
-// be generated and saved to the config file. It has a minimum execution
-// time of 100ms to guard against timeing attacks
-func AllowedAccess(password string, reportPath []string) (allowed bool) {
+// Lock the mutex before calling
+func reportPassword(path []string) (hasPassword bool, password string) {
+	pathString := pathToString(path)
+	password, exists := config.ReportPasswords[pathString]
+	return exists, password
+}
+
+// this checks is a password is valid for a given path. If the master
+// password is used to authenticate to a previously unknown report, a
+// report password will be generated. It has a minimum execution time of
+// 100ms to guard against timeing attacks
+func AllowedAccess(providedPassword string, reportPath []string) (allowed bool) {
 	config.mutex.Lock()
 
-	// we are use a wait group to enforce a minimum execution time to
+	// we use a wait group to enforce a minimum execution time to
 	// prevent timeing attacks
 	var waitGroup sync.WaitGroup
-	waitGroup.Add(2)
+	waitGroup.Add(1)
 	go func() {
 		time.Sleep(time.Millisecond * minMsForPasswordCheck)
 		waitGroup.Done()
 	}()
 
 	// do the actual check
-	go func() {
-		if password == config.MasterPassword {
-			allowed = true
-		} else if password == reportPassword(reportPath) {
-			allowed = true
-		} else {
-			allowed = false
+	allowed = false
+	hasReportPassword, password := reportPassword(reportPath)
+	if hasReportPassword && providedPassword == password {
+		allowed = true
+	} else if providedPassword == config.MasterPassword {
+		allowed = true
+		// if authenticated with the master password and there is
+		// not a report password yet, create one
+		if !hasReportPassword {
+			createReportPassword(reportPath)
 		}
+	}
+	config.mutex.Unlock()
 
-		config.mutex.Unlock()
-		waitGroup.Done()
-	}()
-
+	// wait for out minimum time
 	waitGroup.Wait()
 	return
 }

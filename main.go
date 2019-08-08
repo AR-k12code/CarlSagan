@@ -20,8 +20,9 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 		appName, password, providedBasicAuth := request.BasicAuth()
 
 		if !providedBasicAuth {
-			response.Header().Set("WWW-Authenticate", `Basic realm="Carl Sagan"`)
 			response.WriteHeader(401)
+			response.Header().Set("WWW-Authenticate", `Basic realm="Carl Sagan"`)
+			response.Header().Set("Content-Type", "text/plain")
 			_, err := response.Write([]byte("Unauthorised: You must specify either the " +
 				"master password or a report password in the password " +
 				"field via HTTP basic auth\n"))
@@ -53,8 +54,9 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 
 		// check if the password is valid
 		if !AllowedAccess(password, path) {
-			response.Header().Set("WWW-Authenticate", `Basic realm="Carl Sagan"`)
 			response.WriteHeader(401)
+			response.Header().Set("WWW-Authenticate", `Basic realm="Carl Sagan"`)
+			response.Header().Set("Content-Type", "text/plain")
 			_, err := response.Write([]byte("Unauthorised: The provided password " +
 				"is invalid or does not provide access to the requested " +
 				"resource\n"))
@@ -62,16 +64,24 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 			return true
 		}
 
-		// do the cognos requests and send the result
+		// do the cognos requests
 		respBody := PrepareResponse(asJSON, path)
+
+		// set the content type and send the response
+		if asJSON {
+			response.Header().Set("Content-Type", "application/json")
+		} else {
+			response.Header().Set("Content-Type", "text/csv")
+		}
 		_, err := response.Write([]byte(respBody))
 		jgh.PanicOnErr(err)
-
 		return true
 	})
 	if !success {
 		response.WriteHeader(500)
-		_, err := response.Write([]byte(fmt.Sprintf("%v\n", errorMessage)))
+		response.Header().Set("Content-Type", "text/plain")
+		errRespBody := fmt.Sprintf("%v\n", errorMessage)
+		_, err := response.Write([]byte(errRespBody))
 		jgh.PanicOnErr(err)
 	}
 }
@@ -83,6 +93,9 @@ func loadConfigFixedLocation() {
 	exeFolder := filepath.Dir(exePath)
 
 	configPath := exeFolder + "/config.json"
+
+	// IDK what this is, but it happens in IIS
+	configPath = strings.TrimPrefix(configPath, `\\?\`)
 
 	config.mutex.Lock()
 	defer config.mutex.Unlock()
@@ -111,12 +124,26 @@ func main() {
 		jgh.PanicOnErr(err)
 	} else if len(os.Args) == 1 {
 		// cgi
-		// load config
-		loadConfigFixedLocation()
-
-		// handle request
 		runningAsCGI = true
 		err := cgi.Serve(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			success, errorMessage := jgh.Try(0, 1, false, "", func() bool {
+				// trim the path to the CGI off our request path
+				cgiPrefix := os.Getenv("SCRIPT_NAME")
+				request.URL.Path = strings.TrimPrefix(request.URL.Path, cgiPrefix)
+
+				// load the global config
+				loadConfigFixedLocation()
+				return true
+			})
+			if !success {
+				response.WriteHeader(500)
+				response.Header().Set("Content-Type", "text/plain")
+				errRespBody := fmt.Sprintf("%v\n", errorMessage)
+				_, err := response.Write([]byte(errRespBody))
+				jgh.PanicOnErr(err)
+				return
+			}
+
 			handlerFunc(response, request)
 		}))
 		jgh.PanicOnErr(err)
