@@ -11,6 +11,7 @@ import (
 
 	"github.com/9072997/cognos"
 	"github.com/9072997/jgh"
+	"github.com/iancoleman/strcase"
 )
 
 var config struct {
@@ -137,6 +138,9 @@ func sliceType(data []string) (dataType dataTypeType) {
 	// this is the 0 value for dataTypeType, so we don't need to do anything
 	// if there is
 	for i := 0; i < len(data); i++ {
+		// remove trailing spaces
+		data[i] = strings.TrimRight(data[i], " ")
+
 		var err error
 		// try to parse as current type
 		switch dataType {
@@ -199,7 +203,12 @@ func csvToJSON(csvData string) string {
 
 		// build a single data object
 		for colNum, colName := range headers {
-			value := row[colNum]
+			// remove trailing spaces
+			value := strings.TrimRight(row[colNum], " ")
+
+			// canonicalize column names
+			// BUG(jon): what if there are duplicate names
+			colName = strcase.ToLowerCamel(colName)
 			// don't panic if a row is missing a field
 			jgh.Try(0, 1, false, "", func() bool {
 				// we don't have to check errors here because we already
