@@ -33,7 +33,7 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 			response.Header().Set("Content-Type", "text/plain")
 			_, err := response.Write([]byte("Unauthorised: You must specify either the " +
 				"master password or a report password in the password " +
-				"field via HTTP basic auth\n"))
+				"field via HTTP basic auth or via the X-API-Key header.\n"))
 			jgh.PanicOnErr(err)
 			return true
 		}

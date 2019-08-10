@@ -5,7 +5,9 @@ A microservice that provides simple access to Arkansas' student information syst
 
 ### Standalone Webserver
 `carlsagan.exe --standalone 127.0.0.1:80` to listen on port 80 on 127.0.0.1
+
 `carlsagan.exe --standalone :80` to listen on port 80 on all IP addresses
+
 The standalone webserver does not support HTTPS.
 
 ### CGI on IIS 10
@@ -37,15 +39,27 @@ Here is a sample web.config that should protect your config.json file and allow 
 ## Using the API
 
 ### Authorization
-Authorization is done using HTTP Basic Auth. The username does not matter. It is reported in the logs when run in standalone mode and is likely reported somewhere if you have logging set up in IIS. I recomend putting the script name in the username field for debuging. For the password use either the master password or a report password (see config.json). To create a report password, first access the report using the master password. You can do this with a normal web browser. To see what the report password is you will have to look at the config.json file on the server. It is not avalible via the API at the moment.
+Authorization can be done via HTTP Basic Auth or using the custom header `X-API-Key`. In either case you will need the master password or a report password (see config.json). To create a report password, first access the report using the master password. You can do this with a normal web browser (see the note about HTTP Basic Auth if running under IIS). To see what the report password is you will have to look at the config.json file on the server. It is not available via the API at the moment.
+#### HTTP Basic Auth
+If authenticating with HTTP Basic Auth, you should put the master password or report password in the password field. The username does not matter. It is reported in the logs when run in standalone mode and is likely reported somewhere if you have logging set up in IIS. I recommend putting the script name in the username field for debugging.
+
+**NOTE**: IIS will block the `WWW-Authenticate` header we send to prompt the client to authenticate. Most HTTP client libraries don't need this, but the internet tells me some do. If this causes you problems, try useing the `X-API-Key` header to authenticate.
+
+#### X-API-Key Header
+If you send a `X-API-Key` header, it will take precedence over the password sent via HTTP Basic Auth. If HTTP Basic Auth was also provided the username will be used for logging as normal, but the password will be ignored. The `X-API-Key` header should be set to the master password or a report password.
+
+**NOTE**: Auto-generated passwords will not contain special characters, but if you set a password that does, you must take care to ensure it can be sent in this header. There is no way to escape special characters.
 
 ### Response Types:
 #### CSV
-This is the default. Folders are represented as a list line feed seperated names. There is no way to tell the diffrence between reports and folders when listing folders in this mode. Reports are the raw data as returned from Cognos.
+This is the default. Folders are represented as a list of line feed seperated names. There is no way to tell the difference between reports and folders when listing folders in this mode. Reports are the raw data as returned from Cognos.
+
 #### JSON
 You can get JSON by appending `.json` to the URL or using an `Accept` header that ends in "json". Folders are represented as a map of folder names to objects. Reports are an array of objects with each object corrisponding to a row. This was designed for use with [Invoke-RestMethod](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/Invoke-RestMethod).
+
 ##### Folders
 Folders are a map of folder names to objects representing folder entries. Each object has a `type` field which may be either "report" or "folder". Additionally there is an `id` field. For folders, this is the folder id in Cognos.
+
 Example folder:
 ```
 {
@@ -63,8 +77,10 @@ Example folder:
 	}
 }
 ```
+
 ##### Reports
 Reports are an array of objects. Each object corresponds to a row in the report. We will attempt to automatically convert to booleans or numbers, but we will only do so if we can convert all data in a column to that type. For all data types we strip trailing spaces.
+
 Example report:
 ```
 [
@@ -78,7 +94,6 @@ Example report:
 	}
 ]
 ```
-
 
 ## config.json
 It should always be in the same folder as the binary and should be readable **and writeable** by the process. It will contain the infomation used to connect to cognos as well at the passwords other scripts will use to authenticate with this server. If a config.json does not exist in the same folder as the binary, it will attempt to create one. Here is an example config.json file:
