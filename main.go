@@ -17,9 +17,17 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 	success, errorMessage := jgh.Try(0, 1, false, "", func() bool {
 		// we use the username field for the name of the application.
 		// This is optional, but it's used for logging.
-		appName, password, providedBasicAuth := request.BasicAuth()
+		appName, password, providedAuth := request.BasicAuth()
 
-		if !providedBasicAuth {
+		// If a password was provided via the custom header, prefer that
+		// one over the one from basic-auth
+		apiKeyHeader := request.Header.Get("X-API-Key")
+		if len(apiKeyHeader) > 0 {
+			password = apiKeyHeader
+			providedAuth = true
+		}
+
+		if !providedAuth {
 			response.WriteHeader(401)
 			response.Header().Set("WWW-Authenticate", `Basic realm="Carl Sagan"`)
 			response.Header().Set("Content-Type", "text/plain")
