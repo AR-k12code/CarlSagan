@@ -43,7 +43,7 @@ Authorization is done using HTTP Basic Auth. The username does not matter. It is
 #### CSV
 This is the default. Folders are represented as a list line feed seperated names. There is no way to tell the diffrence between reports and folders when listing folders in this mode. Reports are the raw data as returned from Cognos.
 #### JSON
-You can get JSON by appending `.json` to the URL or using an `Accept` header that ends in "json". Folders are represented as a map of folder names to objects. Reports are an array of objects with each object corrisponding to a row. This was designed for use with [Invoke-WebRequest](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/invoke-webrequest).
+You can get JSON by appending `.json` to the URL or using an `Accept` header that ends in "json". Folders are represented as a map of folder names to objects. Reports are an array of objects with each object corrisponding to a row. This was designed for use with [Invoke-RestMethod](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/Invoke-RestMethod).
 ##### Folders
 Folders are a map of folder names to objects representing folder entries. Each object has a `type` field which may be either "report" or "folder". Additionally there is an `id` field. For folders, this is the folder id in Cognos.
 Example folder:
