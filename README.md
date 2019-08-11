@@ -50,6 +50,17 @@ If you send a `X-API-Key` header, it will take precedence over the password sent
 
 **NOTE**: Auto-generated passwords will not contain special characters, but if you set a password that does, you must take care to ensure it can be sent in this header. There is no way to escape special characters.
 
+### URL Format
+`/{dsn}/{root folder}/{path}`
+
+* **dsn**: For me this is `bentonvisms`. I am in the Bentonville district and sms is student management system. You will have a diffrent dsn for finance data. You can find this by opening Cognos from eschool and looking at the source code for that page. The url will include `dsn=something`. It also shows up in the URL when you edit a report.
+* **root folder**: This should be either `~` for paths that start in the home folder of the user configured in config.json or `public` for paths that start in the root public folder.
+* **path**: The path to the report. This is case-sensitive. You can add `.json` to the end to get json data.
+
+Example URL: `https://CarlSaganServer.MySchool.com/carlsagan.exe/bentonvisms/~/scratch/complex.json`
+
+This will give you a report called "complex" in a folder called "scratch" in the "My Folder" for the user in config.json
+
 ### Response Types:
 #### CSV
 This is the default. Folders are represented as a list of line feed seperated names. There is no way to tell the difference between reports and folders when listing folders in this mode. Reports are the raw data as returned from Cognos.
@@ -111,6 +122,7 @@ It should always be in the same folder as the binary and should be readable **an
 	"httpTimeout": 30
 }
 ```
+
 * **cognosUsername**: The username you use to connect to Cognos. This should be prefixed with `APSCN\` (just like when you log in using Firefox or Chrome). Note that you have to escape the `\` character in JSON.
 * **cognosPassword**: The password you use to connect to Cognos. Remember that ADE makes you change this every 6 months or so.
 * **cognosUrl**: If you are in Arkansas, use the same value as in the example. This must match the protocol (http/https) used by Cognos.
