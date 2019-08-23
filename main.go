@@ -7,6 +7,7 @@ import (
 	"net/http/cgi"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/9072997/jgh"
@@ -80,6 +81,10 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 			response.Header().Set("Content-Type", "application/json")
 		} else {
 			response.Header().Set("Content-Type", "text/csv")
+			// for CSV we specify a filename so I can give links to users for use in a browser.
+			// only allow charicters in the filename that I won't have to quote in the HTTP header
+			safeReportName := regexp.MustCompile("[^A-Za-z0-9 _.-]").ReplaceAllString((path[lastPathPos]), "")
+			response.Header().Set("Content-Disposition", `attachment; filename="`+safeReportName+`.csv"`)
 		}
 		_, err := response.Write([]byte(respBody))
 		jgh.PanicOnErr(err)
