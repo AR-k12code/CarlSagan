@@ -29,9 +29,9 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 		}
 
 		if !providedAuth {
-			response.WriteHeader(401)
 			response.Header().Set("WWW-Authenticate", `Basic realm="Carl Sagan"`)
 			response.Header().Set("Content-Type", "text/plain")
+			response.WriteHeader(401)
 			_, err := response.Write([]byte("Unauthorised: You must specify either the " +
 				"master password or a report password in the password " +
 				"field via HTTP basic auth or via the X-API-Key header.\n"))
@@ -63,9 +63,9 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 
 		// check if the password is valid
 		if !AllowedAccess(password, path) {
-			response.WriteHeader(401)
 			response.Header().Set("WWW-Authenticate", `Basic realm="Carl Sagan"`)
 			response.Header().Set("Content-Type", "text/plain")
+			response.WriteHeader(401)
 			_, err := response.Write([]byte("Unauthorised: The provided password " +
 				"is invalid or does not provide access to the requested " +
 				"resource\n"))
@@ -91,8 +91,8 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 		return true
 	})
 	if !success {
-		response.WriteHeader(500)
 		response.Header().Set("Content-Type", "text/plain")
+		response.WriteHeader(500)
 		errRespBody := fmt.Sprintf("%v\n", errorMessage)
 		_, err := response.Write([]byte(errRespBody))
 		jgh.PanicOnErr(err)
@@ -149,8 +149,8 @@ func main() {
 				return true
 			})
 			if !success {
-				response.WriteHeader(500)
 				response.Header().Set("Content-Type", "text/plain")
+				response.WriteHeader(500)
 				errRespBody := fmt.Sprintf("%v\n", errorMessage)
 				_, err := response.Write([]byte(errRespBody))
 				jgh.PanicOnErr(err)

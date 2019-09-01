@@ -18,11 +18,11 @@ This is how I set things up. There are lots of options for how to do this.
 * Restrict read access to the folder so people can't see your config.json file. You can do this via IIS manager, or you can put the web.config from the end of this section in the same folder.
 * Grant write permission on config.json to `FOO\IURS` where "FOO" is the server name
 	* The user might be diffrent depending on your app pool identity. One way to figure out the right user is to set up everything else, then *temporarily* grant write permissions on the folder to `Everyone`. You can then try to access a page via a browser and a config.json will be created. Note which user's have permissions on the file. Don't forget to set folder permissions back.
- * Add the full path to carlsagan.exe to "ISAPI and CGI Restrictions" in the IIS manager
- * (optional) use the [url rewrite](https://www.iis.net/downloads/microsoft/url-rewrite) module to make your URL paths pretty. This example assumes carlsagan.exe is in the root folder and you want report paths to start at the root folder.
-	 * **match url**: `^(.*)$`
-	 * **action type**: Rewrite
-	 * **url**: `carlsagan.exe/{R:1}`
+* Add the full path to carlsagan.exe to "ISAPI and CGI Restrictions" in the IIS manager
+* (optional) use the [url rewrite](https://www.iis.net/downloads/microsoft/url-rewrite) module to make your URL paths pretty. This example assumes carlsagan.exe is in the root folder and you want report paths to start at the root folder.
+	* **match url**: `^(.*)$`
+	* **action type**: Rewrite
+	* **url**: `carlsagan.exe/{R:1}`
 
 #### web.config
 Here is a sample web.config that should protect your config.json file and allow errors to be displayed
@@ -39,11 +39,9 @@ Here is a sample web.config that should protect your config.json file and allow 
 ## Using the API
 
 ### Authorization
-Authorization can be done via HTTP Basic Auth or using the custom header `X-API-Key`. In either case you will need the master password or a report password (see config.json). To create a report password, first access the report using the master password. You can do this with a normal web browser (see the note about HTTP Basic Auth if running under IIS). To see what the report password is you will have to look at the config.json file on the server. It is not available via the API at the moment.
+Authorization can be done via HTTP Basic Auth or using the custom header `X-API-Key`. In either case you will need the master password or a report password (see config.json). To create a report password, first access the report using the master password. You can do this with a normal web browser. To see what the report password is you will have to look at the config.json file on the server. It is not available via the API at the moment.
 #### HTTP Basic Auth
 If authenticating with HTTP Basic Auth, you should put the master password or report password in the password field. The username does not matter. It is reported in the logs when run in standalone mode and is likely reported somewhere if you have logging set up in IIS. I recommend putting the script name in the username field for debugging.
-
-**NOTE**: IIS will block the `WWW-Authenticate` header we send to prompt the client to authenticate. Most HTTP client libraries don't need this, but the internet tells me some do. If this causes you problems, try useing the `X-API-Key` header to authenticate.
 
 #### X-API-Key Header
 If you send a `X-API-Key` header, it will take precedence over the password sent via HTTP Basic Auth. If HTTP Basic Auth was also provided the username will be used for logging as normal, but the password will be ignored. The `X-API-Key` header should be set to the master password or a report password.
@@ -54,12 +52,12 @@ If you send a `X-API-Key` header, it will take precedence over the password sent
 `/{dsn}/{root folder}/{path}`
 
 * **dsn**: For me this is `bentonvisms`. I am in the Bentonville district and sms is student management system. You will have a diffrent dsn for finance data. You can find this by opening Cognos from eschool and looking at the source code for that page. The url will include `dsn=something`. It also shows up in the URL when you edit a report.
-* **root folder**: This should be either `~` for paths that start in the home folder of the user configured in config.json or `public` for paths that start in the root public folder.
+* **root folder**: This should be either a username for paths that start in the home folder of a user in config.json or `public` for paths that start in the root public folder. For usernames containing a `\` you can use `_` instead.
 * **path**: The path to the report. This is case-sensitive. You can add `.json` to the end to get json data.
 
-Example URL: `https://CarlSaganServer.MySchool.com/carlsagan.exe/bentonvisms/~/scratch/complex.json`
+Example URL: `https://CarlSaganServer.MySchool.com/carlsagan.exe/bentonvisms/APSCN_0401jpenn/scratch/complex.json`
 
-This will give you a report called "complex" in a folder called "scratch" in the "My Folder" for the user in config.json
+This will give you a report called "complex" in a folder called "scratch" in the "My Folder" for the user "APSCN\\0401jpenn"
 
 ### Response Types:
 #### CSV
@@ -110,11 +108,12 @@ Example report:
 It should always be in the same folder as the binary and should be readable **and writeable** by the process. It will contain the infomation used to connect to cognos as well at the passwords other scripts will use to authenticate with this server. If a config.json does not exist in the same folder as the binary, it will attempt to create one. Here is an example config.json file:
 ```
 {
-	"cognosUsername": "APSCN\\0401jpenn",
-	"cognosPassword": "MyExistingPasswordForCognos",
+	"cognosUserPasswords": {
+		"APSCN\\0401jpenn": "MyExistingPasswordForCognos"
+	},
 	"cognosUrl": "https://adecognos.arkansas.gov",
 	"reportPasswords": {
-		"bentonvisms/~": "0PiolugiUkyqewq4gxQrxRPvIlkkjhgfNcwtjh88nxDkBOar1P88j68765g877MW"
+		"bentonvisms/public": "0PiolugiUkyqewq4gxQrxRPvIlkkjhgfNcwtjh88nxDkBOar1P88j68765g877MW"
 	},
 	"masterPassword": "ThisIsAPasswordYouMakeUp",
 	"retryDelay": 3,
@@ -123,8 +122,7 @@ It should always be in the same folder as the binary and should be readable **an
 }
 ```
 
-* **cognosUsername**: The username you use to connect to Cognos. This should be prefixed with `APSCN\` (just like when you log in using Firefox or Chrome). Note that you have to escape the `\` character in JSON.
-* **cognosPassword**: The password you use to connect to Cognos. Remember that ADE makes you change this every 6 months or so.
+* **cognosUserPasswords**: This is a set of usernames and passwords to connect to Cognos with. You might want to have multiple users here if you want to be able to download reports from the "My Folder" of multiple users. Reports in the public folder will use a random set of credentials out of this file. The username should be prefixed with `APSCN\` (just like when you log in using Firefox or Chrome). Note that you have to escape the `\` character in JSON. Also remember that ADE makes you change your password every 6 months or so and you will need to update it in your config when you change it.
 * **cognosUrl**: If you are in Arkansas, use the same value as in the example. This must match the protocol (http/https) used by Cognos.
 * **reportPasswords**: If you are writeing a config file for the first time, omit this value entirely. "report passwords" will be automatically generated when a url is accessed using the master password for the first time. This is why we need write permissions on the config file You can change these or fill them in in advance if you like, but the normal workflow is to let it generate a password then copy it into your script and never change it.
 * **masterPassword**: This can be used in the same way as a report password, but it has access to all reports.

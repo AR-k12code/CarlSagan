@@ -15,16 +15,15 @@ import (
 )
 
 var config struct {
-	CognosUsername  string            `json:"cognosUsername"`
-	CognosPassword  string            `json:"cognosPassword"`
-	CognosURL       string            `json:"cognosUrl"`
-	ReportPasswords map[string]string `json:"reportPasswords"`
-	MasterPassword  string            `json:"masterPassword"`
-	RetryDelay      uint              `json:"retryDelay"`
-	RetryCount      int               `json:"retryCount"`
-	HTTPTimeout     uint              `json:"httpTimeout"`
-	configPath      string
-	mutex           sync.Mutex
+	CognosUserPasswords map[string]string `json:"cognosUserPasswords"`
+	CognosURL           string            `json:"cognosUrl"`
+	ReportPasswords     map[string]string `json:"reportPasswords"`
+	MasterPassword      string            `json:"masterPassword"`
+	RetryDelay          uint              `json:"retryDelay"`
+	RetryCount          int               `json:"retryCount"`
+	HTTPTimeout         uint              `json:"httpTimeout"`
+	configPath          string
+	mutex               sync.Mutex
 }
 
 const minMsForPasswordCheck = 100
@@ -33,6 +32,9 @@ const minMsForPasswordCheck = 100
 func readConfig(filename string) {
 	configJSON, err := ioutil.ReadFile(filename)
 	if err != nil {
+		// make a spot for 1 user in the config template
+		config.CognosUserPasswords = map[string]string{"": ""}
+
 		writeConfig(filename)
 		panic("No config file was found. One has been created in the " +
 			"same folder as this executable")
@@ -40,6 +42,11 @@ func readConfig(filename string) {
 
 	err = json.Unmarshal(configJSON, &config)
 	jgh.PanicOnErr(err)
+
+	// make sure we have at least 1 Cognos user
+	if len(config.CognosUserPasswords) == 0 {
+		panic("You must specify at least 1 Cognos user in the config file")
+	}
 
 	// make sure we don't have a nil map
 	if config.ReportPasswords == nil {
@@ -249,9 +256,35 @@ func PrepareResponse(asJSON bool, path []string) (response string) {
 	path = path[1:]
 
 	config.mutex.Lock()
+
+	// the next component of the path is either a username or "public".
+	// if it is a username, we need to set the user/password and change
+	// the root to "~". A "~" indicates "the current user's home folder"
+	// to our library.
+	var username, password string
+	if path[0] == "public" {
+		// grab any set of Cognos credentials
+		for username, password = range config.CognosUserPasswords {
+			break
+		}
+	} else {
+		// usernames have backslashes in them, but putting one of those
+		// in a URL is awkward, so we allow using "_" insted
+		username = strings.Replace(path[0], "_", `\`, 1)
+
+		var userInConfig bool
+		password, userInConfig = config.CognosUserPasswords[username]
+		if !userInConfig {
+			panic("no password for " + username + " in config file")
+		}
+
+		// our library expects "~" for the current user's folder
+		path[0] = "~"
+	}
+
 	cognosInstance := cognos.MakeInstance(
-		config.CognosUsername,
-		config.CognosPassword,
+		username,
+		password,
 		config.CognosURL,
 		dsn,
 		config.RetryDelay,
@@ -259,6 +292,8 @@ func PrepareResponse(asJSON bool, path []string) (response string) {
 		config.HTTPTimeout,
 		1,
 	)
+
+	// talking to cognos can take a long time, so unlock before we start
 	config.mutex.Unlock()
 
 	// walk the folder structure to get to the thing referenced by path
