@@ -247,7 +247,7 @@ func csvToJSON(csvData string) string {
 func PrepareResponse(asJSON bool, path []string) (response string) {
 	// path must contain a DSN and something else
 	if len(path) < 2 {
-		panic("path must contain at a DSN and at least one other component")
+		panic("path must contain a DSN and at least one other component")
 	}
 
 	// first component of the path is DSN
