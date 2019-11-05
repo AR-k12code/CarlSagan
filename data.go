@@ -245,15 +245,17 @@ func csvToJSON(csvData string) string {
 }
 
 func PrepareResponse(asJSON bool, path []string) (response string) {
-	// path must contain a DSN and something else
-	if len(path) < 2 {
-		panic("path must contain a DSN and at least one other component")
+	// path must contain a Namespace, DSN and something else
+	if len(path) < 3 {
+		panic("path must contain a Namespace, DSN and at least one other component")
 	}
 
-	// first component of the path is DSN
-	// extract the dsn and remove it from the path
-	dsn := path[0]
-	path = path[1:]
+	// first component of the path is Namespace
+	// second is DSN
+	// extract those and remove them from the path
+	namespace := path[0]
+	dsn := path[1]
+	path = path[2:]
 
 	config.mutex.Lock()
 
@@ -286,6 +288,7 @@ func PrepareResponse(asJSON bool, path []string) (response string) {
 		username,
 		password,
 		config.CognosURL,
+		namespace,
 		dsn,
 		config.RetryDelay,
 		config.RetryCount,
