@@ -49,13 +49,14 @@ If you send a `X-API-Key` header, it will take precedence over the password sent
 **NOTE**: Auto-generated passwords will not contain special characters, but if you set a password that does, you must take care to ensure it can be sent in this header. There is no way to escape special characters.
 
 ### URL Format
-`/{dsn}/{root folder}/{path}`
+`/{namespace}/{dsn}/{root folder}/{path}`
 
+* **namespace**: The namespace is the first thing you select when signing in to Cognos in a web browser. For me this is `esp` for eSchool data or `efp` for eFinance data.
 * **dsn**: For me this is `bentonvisms`. I am in the Bentonville district and sms is student management system. You will have a diffrent dsn for finance data. You can find this by opening Cognos from eschool and looking at the source code for that page. The url will include `dsn=something`. It also shows up in the URL when you edit a report.
 * **root folder**: This should be either a username for paths that start in the home folder of a user in config.json or `public` for paths that start in the root public folder. For usernames containing a `\` you can use `_` instead.
 * **path**: The path to the report. This is case-sensitive. You can add `.json` to the end to get json data.
 
-Example URL: `https://CarlSaganServer.MySchool.com/carlsagan.exe/bentonvisms/APSCN_0401jpenn/scratch/complex.json`
+Example URL: `https://CarlSaganServer.MySchool.com/carlsagan.exe/esp/bentonvisms/APSCN_0401jpenn/scratch/complex.json`
 
 This will give you a report called "complex" in a folder called "scratch" in the "My Folder" for the user "APSCN\\0401jpenn"
 
