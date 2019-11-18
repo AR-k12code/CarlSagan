@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/9072997/jgh"
@@ -76,7 +77,7 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 		// do the cognos requests
 		respBody := PrepareResponse(asJSON, path)
 
-		// set the content type and send the response
+		// set the content type
 		if asJSON {
 			response.Header().Set("Content-Type", "application/json")
 		} else {
@@ -86,6 +87,11 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 			safeReportName := regexp.MustCompile("[^A-Za-z0-9 _.-]").ReplaceAllString((path[lastPathPos]), "")
 			response.Header().Set("Content-Disposition", `attachment; filename="`+safeReportName+`.csv"`)
 		}
+		// set content length
+		// this is not required, but lets browsers display progress
+		contentLength := strconv.FormatInt(int64(len([]byte(respBody))), 10)
+		response.Header().Set("Content-Length", contentLength)
+		// send actual data
 		_, err := response.Write([]byte(respBody))
 		jgh.PanicOnErr(err)
 		return true
