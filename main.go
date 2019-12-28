@@ -148,7 +148,7 @@ func loadConfigFixedLocation() {
 	jgh.PanicOnErr(err)
 	exeFolder := filepath.Dir(exePath)
 
-	configPath := exeFolder + "/config.json"
+	configPath := filepath.Join(exeFolder, "config.json")
 
 	// IDK what this is, but it happens in IIS
 	configPath = strings.TrimPrefix(configPath, `\\?\`)
