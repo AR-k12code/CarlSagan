@@ -56,8 +56,7 @@ func cleanCache() {
 	return
 }
 
-func addToCache(path []string, data string) {
-	hash := pathHash(path)
+func addToCache(hash string, data string) {
 	file := filepath.Join(getCacheDir(), hash)
 	// atomically write data to file
 	err := atomic.WriteFile(file, strings.NewReader(data))
@@ -66,8 +65,7 @@ func addToCache(path []string, data string) {
 
 // get an item form the cache. Aditionally report it's age in seconds or -1
 // if the item was not in the cache
-func getFromCache(path []string) (data string, age int) {
-	hash := pathHash(path)
+func getFromCache(hash string) (data string, age int) {
 	file := filepath.Join(getCacheDir(), hash)
 
 	// get file modified time

@@ -252,7 +252,8 @@ func PrepareResponse(asJSON bool, path []string, maxAge uint) (response string) 
 	}
 
 	// try to get the report from the cache
-	reportCSV, age := getFromCache(path)
+	hash := pathHash(path)
+	reportCSV, age := getFromCache(hash)
 	// if item was in cache and it new enough use the cache
 	if age != -1 && age <= int(maxAge) {
 		// this logic is duplicated from below so we can share cache items
@@ -332,7 +333,7 @@ func PrepareResponse(asJSON bool, path []string, maxAge uint) (response string) 
 		}
 	} else if object.Type == cognos.Report {
 		reportCSV = cognosInstance.DownloadReportCSV(object.ID)
-		addToCache(path, reportCSV)
+		addToCache(hash, reportCSV)
 		if asJSON {
 			return csvToJSON(reportCSV)
 		} else {
