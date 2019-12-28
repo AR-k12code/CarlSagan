@@ -107,6 +107,10 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 			return true
 		}
 
+		// record that this report was used so it will get refreshed when
+		// the cache is warmed
+		recordUse(path)
+
 		// do the cognos requests
 		respBody := PrepareResponse(asJSON, path, maxAge)
 
@@ -174,6 +178,14 @@ func main() {
 		port := os.Args[2]
 		err := http.ListenAndServe(port, nil)
 		jgh.PanicOnErr(err)
+	} else if len(os.Args) == 3 && os.Args[1] == "--warm" {
+		// load config
+		loadConfigFixedLocation()
+
+		// get number of seconds we want to go back when warming the cache
+		usedWithin, err := strconv.ParseUint(os.Args[2], 10, 32)
+		jgh.PanicOnErr(err)
+		warmCache(uint(usedWithin))
 	} else if len(os.Args) == 1 {
 		// cgi
 		runningAsCGI = true
@@ -202,6 +214,7 @@ func main() {
 	} else {
 		// invalid args; print usage information
 		fmt.Println("Usage:", os.Args[0], "--standalone [ip address]:<port>")
+		fmt.Println("      ", os.Args[0], "--warm <used within seconds>")
 		fmt.Println("Examples:", os.Args[0], "--standalone :8080")
 		fmt.Println("         ", os.Args[0], "--standalone 127.0.0.1:8080")
 		fmt.Println("This executable also supports CGI.")

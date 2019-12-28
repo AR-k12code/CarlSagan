@@ -1,14 +1,17 @@
 package main
 
 import (
+	"database/sql"
 	"errors"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/9072997/jgh"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/natefinch/atomic"
 )
 
@@ -29,6 +32,100 @@ func getCacheDir() string {
 	}
 
 	return cacheDir
+}
+
+func getUsageFile() string {
+	// get the directory of this executable
+	exePath, err := os.Executable()
+	jgh.PanicOnErr(err)
+	exeFolder := filepath.Dir(exePath)
+
+	// "usage.sqlite3" file is next to this executable
+	usageFile := filepath.Join(exeFolder, "usage.sqlite3")
+
+	return usageFile
+}
+
+func recordUse(path []string) {
+	usageFile := getUsageFile()
+	pathStr := pathToString(path)
+
+	// try 3 times in case we get "file in use"
+	success, msg := jgh.Try(1, 3, false, "", func() bool {
+		// open database
+		db, err := sql.Open("sqlite3", usageFile)
+		jgh.PanicOnErr(err)
+		defer db.Close()
+
+		// create table if it does not exist
+		query, err := db.Prepare("CREATE TABLE IF NOT EXISTS usage (path TEXT PRIMARY KEY, lastUsed INTEGER)")
+		jgh.PanicOnErr(err)
+		_, err = query.Exec()
+		jgh.PanicOnErr(err)
+
+		// set last Used time for given hash to now
+		query, err = db.Prepare("INSERT OR REPLACE INTO usage (path, lastUsed) VALUES (?, ?)")
+		jgh.PanicOnErr(err)
+		_, err = query.Exec(pathStr, time.Now().Unix())
+		jgh.PanicOnErr(err)
+		return true
+	})
+
+	if !success && !runningAsCGI {
+		log.Println(msg)
+	}
+}
+
+func warmCache(usedWithin uint) {
+	usageFile := getUsageFile()
+	// get the mimimum "last used" value for an item to be warmed
+	minTimestamp := time.Now().Unix() - int64(usedWithin)
+
+	var pathsToWarm [][]string
+	// try 3 times in case we get "file in use"
+	jgh.Try(1, 3, true, "", func() bool {
+		// open database
+		db, err := sql.Open("sqlite3", usageFile)
+		jgh.PanicOnErr(err)
+		defer db.Close()
+
+		// create table if it does not exist
+		query, err := db.Prepare("CREATE TABLE IF NOT EXISTS usage (path TEXT PRIMARY KEY, lastUsed INTEGER)")
+		jgh.PanicOnErr(err)
+		_, err = query.Exec()
+		jgh.PanicOnErr(err)
+
+		// get recently used items
+		query, err = db.Prepare("SELECT path FROM usage WHERE lastUsed >= ?")
+		jgh.PanicOnErr(err)
+		rows, err := query.Query(minTimestamp)
+		jgh.PanicOnErr(err)
+		defer rows.Close()
+		for rows.Next() {
+			var pathStr string
+			err := rows.Scan(&pathStr)
+			jgh.PanicOnErr(err)
+			// convert single string back to array of path components
+			path := strings.Split(pathStr, "/")
+			pathsToWarm = append(pathsToWarm, path)
+		}
+
+		return true
+	})
+
+	// warm each path
+	for _, path := range pathsToWarm {
+		// ignore errors
+		_, msg := jgh.Try(0, 1, false, "", func() bool {
+			// we warm the cache by just running through the normal steps to
+			// prepare a response, but we specify that the data must be new
+			PrepareResponse(false, path, 0)
+			return true
+		})
+		if !runningAsCGI {
+			log.Printf("%v %s\n", path, msg)
+		}
+	}
 }
 
 func pathHash(path []string) string {
