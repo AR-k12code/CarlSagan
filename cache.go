@@ -43,6 +43,9 @@ func getUsageFile() string {
 	// "usage.sqlite3" file is next to this executable
 	usageFile := filepath.Join(exeFolder, "usage.sqlite3")
 
+	// use classic path without prefix (sqlite needs this)
+	usageFile = strings.TrimPrefix(usageFile, `\\?\`)
+
 	return usageFile
 }
 
