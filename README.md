@@ -14,10 +14,14 @@ The standalone webserver does not support HTTPS.
 This is how I set things up. There are lots of options for how to do this.
 * Set up HTTPS
 * Install CGI support under "Turn Windows features on or off"
-* Make a folder somewhere with carlsagan.exe and a config.json
-* Restrict read access to the folder so people can't see your config.json file. You can do this via IIS manager, or you can put the web.config from the end of this section in the same folder.
-* Grant write permission on config.json to `FOO\IURS` where "FOO" is the server name
-	* The user might be diffrent depending on your app pool identity. One way to figure out the right user is to set up everything else, then *temporarily* grant write permissions on the folder to `Everyone`. You can then try to access a page via a browser and a config.json will be created. Note which user's have permissions on the file. Don't forget to set folder permissions back.
+* Make a folder somewhere with
+	* carlsagan.exe
+	* a config.json as described later in the readme
+	* usage.sqlite3 (can be an empty file)
+	* a folder named "cache"
+* Restrict read access to the folder so people can't access any of your files except carlsagan.exe. You can do this via IIS manager, or you can put the web.config from the end of this section in the same folder.
+* Grant write permission on config.json, usage.sqlite3, and the cache folder to `FOO\IURS` where "FOO" is the server name
+	* The user might be diffrent depending on your app pool identity. One way to figure out the right user is to set up everything else, then *temporarily* grant write permissions on the folder to `Everyone`. You can then try to access a page via a browser and all nessisary files and folders will be created. Note which users have permissions on these items. Don't forget to set folder permissions back.
 * Add the full path to carlsagan.exe to "ISAPI and CGI Restrictions" in the IIS manager
 * (optional) use the [url rewrite](https://www.iis.net/downloads/microsoft/url-rewrite) module to make your URL paths pretty. This example assumes carlsagan.exe is in the root folder and you want report paths to start at the root folder.
 	* **match url**: `^(.*)$`
@@ -105,6 +109,15 @@ Example report:
 ]
 ```
 
+## Caching
+By default items may be served from the cache as long as they are not older than the age specified by `maxAge` in config.json. You can specify a smaller value for `maxAge` on a per-request basis using the `Cache-Control` header.
+* Setting a header of `Cache-Control: max-age=600` will ensure you get data that is no more than 600 seconds (10 minutes) old.
+* Setting a header of `Cache-Control: no-cache` will re-run the report regardless of how fresh the report is in the cache.
+* Setting a header of `Cache-Control: only-if-cached` will always serve a report from the cache if possible. This may result in data older that the `maxAge` specified in config.json if the cache has not been cleaned out (this happens automatically).
+
+The cache can be warmed manually based on usage. To do this run `carlsagan.exe --warm 604800` to warm all reports used in the last week (604800 seconds). If you want to reduce load during on-peek hours you can set this up as a scheduled task to run during off-peek hours.
+
+
 ## config.json
 It should always be in the same folder as the binary and should be readable **and writeable** by the process. It will contain the infomation used to connect to cognos as well at the passwords other scripts will use to authenticate with this server. If a config.json does not exist in the same folder as the binary, it will attempt to create one. Here is an example config.json file:
 ```
@@ -119,7 +132,8 @@ It should always be in the same folder as the binary and should be readable **an
 	"masterPassword": "ThisIsAPasswordYouMakeUp",
 	"retryDelay": 3,
 	"retryCount": 3,
-	"httpTimeout": 30
+	"httpTimeout": 30,
+	"maxAge": 86400
 }
 ```
 
@@ -130,3 +144,4 @@ It should always be in the same folder as the binary and should be readable **an
 * **retryDelay**: The number of seconds to sleep after a failed request before the next retry. It is also the polling interval when waiting for a report to finish.
 * **retryCount**: The number of times a failed request to Cognos will be retried. A `retryCount` of -1 will retry forever. 
 * **httpTimeout**: The maximum duration of a single request. Requests that take longer than this will be considered failed and will be retried based on the value of `retryCount`.
+* **maxAge**: The default maximum age of a cache item in seconds. This can be shortened on a per-request basis using the `Cache-Control` header.
