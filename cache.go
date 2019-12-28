@@ -46,6 +46,10 @@ func cleanCache() {
 	maxAge := time.Duration(config.MaxAge) * time.Second
 	config.mutex.Unlock()
 
+	// BUG(jon): there is a race condition here. We could identify an old
+	// item, the item could be updated, then we could delete it. This seems
+	// unlikely and the only thing that happens is an unnecessary cache miss
+	// next time, so I'm not going to fix it.
 	for _, file := range cacheItems {
 		// if file is too old
 		if time.Now().Sub(file.ModTime()) > maxAge {

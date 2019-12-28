@@ -263,6 +263,11 @@ func PrepareResponse(asJSON bool, path []string, maxAge uint) (response string) 
 		} else {
 			return reportCSV
 		}
+	} else {
+		// this is a cache miss. That means this request is going to run for
+		// a while. Use this time to clean the cache. It's fine if this is
+		// interupted
+		go cleanCache()
 	}
 	// item was not in cache or was too old. Do the request as normal.
 
