@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"net/http/cgi"
 	"os"
@@ -74,8 +75,40 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 			return true
 		}
 
+		// determine the max age allowed by the request headers.
+		ccHeader := strings.ToLower(request.Header.Get("Cache-Control"))
+		var maxAge uint
+		if ccHeader == "" {
+			// default to value from config.
+			config.mutex.Lock()
+			maxAge = config.MaxAge
+			config.mutex.Unlock()
+		} else if ccHeader == "no-cache" {
+			maxAge = 0
+		} else if ccHeader == "only-if-cached" {
+			maxAge = math.MaxInt32
+		} else if strings.HasPrefix(ccHeader, "max-age=") {
+			maxAgeStr := strings.TrimPrefix(ccHeader, "max-age=")
+			maxAgeStr = strings.TrimSpace(maxAgeStr)
+			maxAge64, err := strconv.ParseInt(maxAgeStr, 10, 32)
+			if err != nil || maxAge64 < 0 {
+				response.Header().Set("Content-Type", "text/plain")
+				response.WriteHeader(400)
+				_, err := response.Write([]byte("The server did not understand your max-age header\n"))
+				jgh.PanicOnErr(err)
+				return true
+			}
+			maxAge = uint(maxAge64)
+		} else {
+			response.Header().Set("Content-Type", "text/plain")
+			response.WriteHeader(501)
+			_, err := response.Write([]byte("Requested Cache-Control method not implimented\n"))
+			jgh.PanicOnErr(err)
+			return true
+		}
+
 		// do the cognos requests
-		respBody := PrepareResponse(asJSON, path)
+		respBody := PrepareResponse(asJSON, path, maxAge)
 
 		// set the content type
 		if asJSON {

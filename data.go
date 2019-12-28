@@ -22,6 +22,7 @@ var config struct {
 	RetryDelay          uint              `json:"retryDelay"`
 	RetryCount          int               `json:"retryCount"`
 	HTTPTimeout         uint              `json:"httpTimeout"`
+	MaxAge              uint              `json:"maxAge"`
 	configPath          string
 	mutex               sync.Mutex
 }
@@ -244,11 +245,25 @@ func csvToJSON(csvData string) string {
 	return string(jsonData)
 }
 
-func PrepareResponse(asJSON bool, path []string) (response string) {
+func PrepareResponse(asJSON bool, path []string, maxAge uint) (response string) {
 	// path must contain a Namespace, DSN and something else
 	if len(path) < 3 {
 		panic("path must contain a Namespace, DSN and at least one other component")
 	}
+
+	// try to get the report from the cache
+	reportCSV, age := getFromCache(path)
+	// if item was in cache and it new enough use the cache
+	if age != -1 && age <= int(maxAge) {
+		// this logic is duplicated from below so we can share cache items
+		// between applications that consume CSV and JSON
+		if asJSON {
+			return csvToJSON(reportCSV)
+		} else {
+			return reportCSV
+		}
+	}
+	// item was not in cache or was too old. Do the request as normal.
 
 	// first component of the path is Namespace
 	// second is DSN
@@ -316,7 +331,8 @@ func PrepareResponse(asJSON bool, path []string) (response string) {
 			return
 		}
 	} else if object.Type == cognos.Report {
-		reportCSV := cognosInstance.DownloadReportCSV(object.ID)
+		reportCSV = cognosInstance.DownloadReportCSV(object.ID)
+		addToCache(path, reportCSV)
 		if asJSON {
 			return csvToJSON(reportCSV)
 		} else {
