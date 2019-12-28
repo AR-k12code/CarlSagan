@@ -115,15 +115,18 @@ func warmCache(usedWithin uint) {
 
 	// warm each path
 	for _, path := range pathsToWarm {
+		if !runningAsCGI {
+			log.Println(path)
+		}
 		// ignore errors
-		_, msg := jgh.Try(0, 1, false, "", func() bool {
+		success, msg := jgh.Try(0, 1, false, "", func() bool {
 			// we warm the cache by just running through the normal steps to
 			// prepare a response, but we specify that the data must be new
 			PrepareResponse(false, path, 0)
 			return true
 		})
-		if !runningAsCGI {
-			log.Printf("%v %s\n", path, msg)
+		if !success && !runningAsCGI {
+			log.Println(msg)
 		}
 	}
 }
