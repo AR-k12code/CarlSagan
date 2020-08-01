@@ -18,6 +18,9 @@ import (
 func handlerFunc(response http.ResponseWriter, request *http.Request) {
 	// if we panic, return a 500 and log error
 	success, errorMessage := jgh.Try(0, 1, false, "", func() bool {
+		// everything is protected by authentication so CORS is fine
+		response.Header().Set("Access-Control-Allow-Origin", "*")
+
 		// we use the username field for the name of the application.
 		// This is optional, but it's used for logging.
 		appName, password, providedAuth := request.BasicAuth()
