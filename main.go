@@ -18,6 +18,16 @@ import (
 func handlerFunc(response http.ResponseWriter, request *http.Request) {
 	// if we panic, return a 500 and log error
 	success, errorMessage := jgh.Try(0, 1, false, "", func() bool {
+		// If this is a CORS preflight request, send back appropriate
+		// headers rather than processing the request normally
+		if request.Method == "OPTIONS" {
+			origin := request.Header.Get("Origin")
+			response.Header().Set("Access-Control-Allow-Origin", origin)
+			response.Header().Set("Access-Control-Allow-Methods", "*")
+			response.Header().Set("Access-Control-Allow-Headers", "X-API-Key")
+			return true
+		}
+
 		// everything is protected by authentication so CORS is fine
 		response.Header().Set("Access-Control-Allow-Origin", "*")
 
