@@ -9,7 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/9072997/cognos"
+	"carlsagan/cognos"
+
 	"github.com/9072997/jgh"
 	"github.com/iancoleman/strcase"
 )
@@ -286,6 +287,9 @@ func PrepareResponse(asJSON bool, path []string, maxAge uint) (response string) 
 	// to our library.
 	var username, password string
 	if path[0] == "public" {
+		// this got renamed in cognos 11
+		path[0] = "Team Content"
+
 		// grab any set of Cognos credentials
 		for username, password = range config.CognosUserPasswords {
 			break
@@ -303,6 +307,7 @@ func PrepareResponse(asJSON bool, path []string, maxAge uint) (response string) 
 
 		// our library expects "~" for the current user's folder
 		path[0] = "~"
+		panic("User folders are not implimented for Cognos 11")
 	}
 
 	cognosInstance := cognos.MakeInstance(
@@ -314,39 +319,20 @@ func PrepareResponse(asJSON bool, path []string, maxAge uint) (response string) 
 		config.RetryDelay,
 		config.RetryCount,
 		config.HTTPTimeout,
-		1,
+		1,   // concurent requests
+		nil, // use default http transport
 	)
 
 	// talking to cognos can take a long time, so unlock before we start
 	config.mutex.Unlock()
 
-	// walk the folder structure to get to the thing referenced by path
-	object := cognosInstance.FolderEntryFromPath(path)
-
-	if object.Type == cognos.Folder {
-		folderEntries := cognosInstance.LsFolder(object.ID)
-		if asJSON {
-			jsonEntries, err := json.MarshalIndent(folderEntries, "", "\t")
-			jgh.PanicOnErr(err)
-			return string(jsonEntries)
-		} else {
-			// just a newline seperated list
-			for name := range folderEntries {
-				response += name + "\n"
-			}
-			return
-		}
-	} else if object.Type == cognos.Report {
-		reportCSV = cognosInstance.DownloadReportCSV(object.ID)
-		addToCache(hash, reportCSV)
-		if asJSON {
-			return csvToJSON(reportCSV)
-		} else {
-			// just return the CSV data as is from cognos
-			return reportCSV
-		}
+	reportCSV = cognosInstance.DownloadReportCSV(path)
+	addToCache(hash, reportCSV)
+	if asJSON {
+		return csvToJSON(reportCSV)
 	} else {
-		panic("Got folder entry of unknown type")
+		// just return the CSV data as is from cognos
+		return reportCSV
 	}
 }
 
