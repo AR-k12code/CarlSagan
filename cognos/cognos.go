@@ -8,10 +8,13 @@ package cognos
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -30,16 +33,25 @@ type Session struct {
 	DSN          string
 	RetryDelay   uint
 	RetryCount   int
+	accountID    string
 	client       http.Client
 	httpLockPool *semaphore.Weighted
 }
 
-// used for an object used in the API
+// used for a objects used in the API
 type namespaceAndDSN struct {
 	Parameters []struct {
 		Name  string `json:"name"`
 		Value string `json:"value"`
 	} `json:"parameters"`
+}
+type directoryListing struct {
+	XMLName xml.Name         `xml:"inspection"`
+	Entries []directoryEntry `xml:"link"`
+}
+type directoryEntry struct {
+	Location string `xml:"location,attr"`
+	Name     string `xml:"abstract"`
 }
 
 // return the JSON payload necessary to set the namespace and DSN
@@ -124,7 +136,45 @@ func MakeInstance(
 		makeNamespaceAndDSN(c.Namespace, c.DSN),
 	)
 
+	// find account ID (needed to get reports from "My Folders")
+	c.accountID = c.currentAccountID()
+
 	return
+}
+
+// find the account ID of the current user. Ex:
+// CAMID("esp:a:0401jpenn")
+func (c Session) currentAccountID() string {
+	// list all available directories
+	resp := c.Request(
+		"GET",
+		"/ibmcognos/bi/v1/disp/rds/wsil",
+		"",
+	)
+
+	// unmarshal response into an object
+	var dir directoryListing
+	err := xml.Unmarshal([]byte(resp), &dir)
+	jgh.PanicOnErr(err)
+
+	// find the entry for "My Folders"
+	var myFolder *directoryEntry
+	for _, entry := range dir.Entries {
+		if entry.Name == "My Folders" {
+			myFolder = &entry
+			break
+		}
+	}
+	if myFolder == nil {
+		panic("Could not find My Folders")
+	}
+
+	// parse account ID from link
+	// it's the 2nd to the last path component
+	link, err := url.PathUnescape(myFolder.Location)
+	jgh.PanicOnErr(err)
+	pathComponents := strings.Split(link, "/")
+	return pathComponents[len(pathComponents)-2]
 }
 
 // Request makes a HTTP GET request to the link (not including hostname)
@@ -199,15 +249,58 @@ func (c Session) Request(method string, link string, reqBody string) (respBody s
 	return respBody
 }
 
+// escape a path component based on rules from tinyurl.com/y58pzsy3
+func cognosEscape(pathComponent string) string {
+	// "_" becomes "_x005F"
+	// this is generalized from the docs to handle "__"
+	pathComponent = strings.ReplaceAll(pathComponent, "_", "_x005F")
+
+	// " " becomes "__"
+	pathComponent = strings.ReplaceAll(pathComponent, " ", "__")
+
+	// boaring characters can stay (a-z, A-Z, 0-9, and _ since we dealt with
+	// it already) but anything even slightly weird gets encoded to _x0000
+	// where 0000 is the character's hex representation in UTF16
+	weirdChars := regexp.MustCompile("[^a-zA-Z0-9_]")
+	pathComponent = weirdChars.ReplaceAllStringFunc(
+		pathComponent,
+		func(s string) string {
+			r := []rune(s)[0]
+			return fmt.Sprintf("_x%04X", r)
+		},
+	)
+
+	return pathComponent
+}
+
+func (c Session) encodePath(path []string) string {
+	if len(path) < 2 {
+		panic("Path must contain at least 2 components")
+	}
+
+	// we want to point to my folders for the current user
+	if path[0] == "~" {
+		// path[0] contains "~"
+		// we need to replace that with 2 components
+		// * c.accountID
+		// * "My Folders"
+		path = append(
+			[]string{c.accountID, "My Folders"},
+			path[1:]...,
+		)
+	}
+
+	for i := range path {
+		path[i] = cognosEscape(path[i])
+	}
+	pathStr := strings.Join(path, "/")
+}
+
 // DownloadReportCSV returns a string containing CSV data for a cognos report.
 // This function triggers the execution of the report, and may take a while
 // to return.
 func (c Session) DownloadReportCSV(path []string) string {
-	for i := range path {
-		path[i] = url.PathEscape(path[i])
-	}
-	pathStr := strings.Join(path, "/")
 	reportURL := "/ibmcognos/bi/v1/disp/rds/outputFormat/path/" +
-		pathStr + "/CSV?v=3&async=OFF"
+		c.encodePath(path) + "/CSV?v=3&async=OFF"
 	return c.Request("GET", reportURL, "")
 }

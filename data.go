@@ -307,7 +307,6 @@ func PrepareResponse(asJSON bool, path []string, maxAge uint) (response string) 
 
 		// our library expects "~" for the current user's folder
 		path[0] = "~"
-		panic("User folders are not implimented for Cognos 11")
 	}
 
 	cognosInstance := cognos.MakeInstance(
