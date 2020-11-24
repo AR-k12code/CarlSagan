@@ -1,3 +1,5 @@
+NOTE: This version of CarlSagan is for Cognos 11. [Here is the version that works with Cognos 10](https://github.com/9072997/CarlSagan).
+
 # CarlSagan
 A microservice that provides simple access to Arkansas' student information system via a chill, timeless API. It can run as a standalone webserver or a CGI script in IIS (probably other webservers too).
 
@@ -53,47 +55,52 @@ If you send a `X-API-Key` header, it will take precedence over the password sent
 **NOTE**: Auto-generated passwords will not contain special characters, but if you set a password that does, you must take care to ensure it can be sent in this header. There is no way to escape special characters.
 
 ### URL Format
-`/{namespace}/{dsn}/{root folder}/{path}`
+`/{namespace}/{dsn}/{root folder}/{path}?{prompt options}`
 
 * **namespace**: The namespace is the first thing you select when signing in to Cognos in a web browser. For me this is `esp` for eSchool data or `efp` for eFinance data.
 * **dsn**: For me this is `bentonvisms`. I am in the Bentonville district and sms is student management system. You will have a diffrent dsn for finance data. You can find this by opening Cognos from eschool and looking at the source code for that page. The url will include `dsn=something`. It also shows up in the URL when you edit a report.
 * **root folder**: This should be either a username for paths that start in the home folder of a user in config.json or `public` for paths that start in the root public folder. For usernames containing a `\` you can use `_` instead.
 * **path**: The path to the report. This is case-sensitive. You can add `.json` to the end to get json data.
+* **prompt options** (optional): If your report requires you to answer prompts to run it you may specify those options as query parameters. See [report parameters](#report-parameters) for more information.
 
 Example URL: `https://CarlSaganServer.MySchool.com/carlsagan.exe/esp/bentonvisms/APSCN_0401jpenn/scratch/complex.json`
 
 This will give you a report called "complex" in a folder called "scratch" in the "My Folder" for the user "APSCN\\0401jpenn"
 
-### Response Types:
-#### CSV
-This is the default. Folders are represented as a list of line feed seperated names. There is no way to tell the difference between reports and folders when listing folders in this mode. Reports are the raw data as returned from Cognos.
+### Report Parameters
+Some Cognos reports require parameters to run. For example you might be required to select a school building or a date range. There are 4 ways to specify report parameters, but they are all different ways of setting key-value pairs. For each method, the key is the `pname` of the parameter and the value is the `useValue`. In order to find the `pname`s you can just try to run the report with no parameters and you will get an error about missing a particular prompt value. Fill it in and repeat until you have all the values. Finding the `useValue` format is trickier. It often does not match the "display value". I have plans to improve this in the future, but for now you you might try looking [here](https://www.ibm.com/support/knowledgecenter/SSEP7J_11.1.0/com.ibm.swg.ba.cognos.ca_dg_cms.doc/c_rest_prompts.html#rest_prompts) to get some ideas about formatting.
+
+
+#### URL Query Parameters
+You can add each key-value pair as a query parameter to the URL like this
+```
+http://localhost:8088/esp/bentonvisms/APSCN_0401jpenn/APSCN%20Add%20Report?Building%20Parameter=8&Start%20Date%20Parameter=2019-11-01T00%3A00%3A00.000&End%20Date%20Parameter=2020-11-01T00%3A00%3A00.000
+```
 
 #### JSON
-You can get JSON by appending `.json` to the URL or using an `Accept` header that ends in "json". Folders are represented as a map of folder names to objects. Reports are an array of objects with each object corrisponding to a row. This was designed for use with [Invoke-RestMethod](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/Invoke-RestMethod).
-
-##### Folders
-Folders are a map of folder names to objects representing folder entries. Each object has a `type` field which may be either "report" or "folder". Additionally there is an `id` field. For folders, this is the folder id in Cognos.
-
-Example folder:
+You can specify key-value pairs by using the `POST` method with a `Content-Type: application/json` request body formatted like this:
 ```
 {
-	"Sample Complex Report": {
-		"type": "report",
-		"id": "CAMID(\"esp:a:0401jpenn\")/folder[@name='My Folders']/query[@name='Sample Complex Report']"
-	},
-	"Sample Simple Report": {
-		"type": "report",
-		"id": "CAMID(\"esp:a:0401jpenn\")/folder[@name='My Folders']/query[@name='Sample Simple Report']"
-	},
-	"Sample folder": {
-		"type": "folder",
-		"id": "i2A084E792C874156AG5AE644C109DDC2"
-	}
+	"Building Parameter": "8",
+	"Start Date Parameter": "2019-11-01T00:00:00.000",
+	"End Date Parameter": "2020-11-01T00:00:00.000",
 }
 ```
 
-##### Reports
-Reports are an array of objects. Each object corresponds to a row in the report. We will attempt to automatically convert to booleans or numbers, but we will only do so if we can convert all data in a column to that type. For all data types we strip trailing spaces.
+#### application/x-www-form-urlencoded
+This is the normal way a browser would encode a form. Conveniently this is also the way PowerShell's `Invoke-RestMethod` encodes data if you pipe in a hash table.
+
+#### multipart/form-data
+Google it. I don't know why you would need this one, but it's there if you do.
+
+### Response Types:
+#### CSV
+This is the default. Reports are the raw data as returned from Cognos.
+
+#### JSON
+You can get JSON by appending `.json` to the URL or using an `Accept` header that ends in "json". Reports are represented as an array of objects with each object corresponding to a row. This was designed for use with [Invoke-RestMethod](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/Invoke-RestMethod).
+
+Each object corresponds to a row in the report. We will attempt to automatically convert to booleans or numbers, but we will only do so if we can convert all data in a column to that type. For all data types we strip trailing spaces.
 
 Example report:
 ```
@@ -117,7 +124,6 @@ By default items may be served from the cache as long as they are not older than
 
 The cache can be warmed manually based on usage. To do this run `carlsagan.exe --warm 604800` to warm all reports used in the last week (604800 seconds). If you want to reduce load during on-peek hours you can set this up as a scheduled task to run during off-peek hours.
 
-
 ## config.json
 It should always be in the same folder as the binary and should be readable **and writeable** by the process. It will contain the infomation used to connect to cognos as well at the passwords other scripts will use to authenticate with this server. If a config.json does not exist in the same folder as the binary, it will attempt to create one. Here is an example config.json file:
 ```
@@ -138,10 +144,10 @@ It should always be in the same folder as the binary and should be readable **an
 ```
 
 * **cognosUserPasswords**: This is a set of usernames and passwords to connect to Cognos with. You might want to have multiple users here if you want to be able to download reports from the "My Folder" of multiple users. Reports in the public folder will use a random set of credentials out of this file. The username should be prefixed with `APSCN\` (just like when you log in using Firefox or Chrome). Note that you have to escape the `\` character in JSON. Also remember that ADE makes you change your password every 6 months or so and you will need to update it in your config when you change it.
-* **cognosUrl**: If you are in Arkansas, use the same value as in the example. This must match the protocol (http/https) used by Cognos.
-* **reportPasswords**: If you are writeing a config file for the first time, omit this value entirely. "report passwords" will be automatically generated when a url is accessed using the master password for the first time. This is why we need write permissions on the config file You can change these or fill them in in advance if you like, but the normal workflow is to let it generate a password then copy it into your script and never change it.
+* **cognosUrl**: If you are in Arkansas, use the same value as in the example (or `https://dev.adecognos.arkansas.gov` if you want the dev instance). This must match the protocol (http/https) used by Cognos.
+* **reportPasswords**: If you are writing a config file for the first time, omit this value entirely. "report passwords" will be automatically generated when a url is accessed using the master password for the first time. This is why we need write permissions on the config file You can change these or fill them in in advance if you like, but the normal workflow is to let it generate a password then copy it into your script and never change it.
 * **masterPassword**: This can be used in the same way as a report password, but it has access to all reports.
-* **retryDelay**: The number of seconds to sleep after a failed request before the next retry. It is also the polling interval when waiting for a report to finish.
+* **retryDelay**: The number of seconds to sleep after a failed request before the next retry.
 * **retryCount**: The number of times a failed request to Cognos will be retried. A `retryCount` of -1 will retry forever. 
 * **httpTimeout**: The maximum duration of a single request. Requests that take longer than this will be considered failed and will be retried based on the value of `retryCount`.
 * **maxAge**: The default maximum age of a cache item in seconds. This can be shortened on a per-request basis using the `Cache-Control` header.

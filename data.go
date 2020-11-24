@@ -246,16 +246,21 @@ func csvToJSON(csvData string) string {
 	return string(jsonData)
 }
 
-func PrepareResponse(asJSON bool, path []string, maxAge uint) (response string) {
+func PrepareResponse(
+	asJSON bool,
+	path []string,
+	promptAnswers map[string]string,
+	maxAge uint,
+) (response string) {
 	// path must contain a Namespace, DSN and something else
 	if len(path) < 3 {
 		panic("path must contain a Namespace, DSN and at least one other component")
 	}
 
 	// try to get the report from the cache
-	hash := pathHash(path)
+	hash := pathHash(path, promptAnswers)
 	reportCSV, age := getFromCache(hash)
-	// if item was in cache and it new enough use the cache
+	// if item was in cache and is new enough use the cache
 	if age != -1 && age <= int(maxAge) {
 		// this logic is duplicated from below so we can share cache items
 		// between applications that consume CSV and JSON
@@ -325,7 +330,7 @@ func PrepareResponse(asJSON bool, path []string, maxAge uint) (response string) 
 	// talking to cognos can take a long time, so unlock before we start
 	config.mutex.Unlock()
 
-	reportCSV = cognosInstance.DownloadReportCSV(path)
+	reportCSV = cognosInstance.DownloadReportCSV(path, promptAnswers)
 	addToCache(hash, reportCSV)
 	if asJSON {
 		return csvToJSON(reportCSV)

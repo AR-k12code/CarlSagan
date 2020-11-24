@@ -52,9 +52,9 @@ func removeNamespaces(n *xmlquery.Node) {
 	}
 }
 
-// ListReportOptions returns an array of option names given the path to a
+// ListReportPrompts returns an array of option names given the path to a
 // report
-func (c Session) ListReportOptions(path []string) []string {
+func (c Session) ListReportPrompts(path []string) []string {
 	// ask cognos to list options
 	url := "/ibmcognos/bi/v1/disp/rds/reportPrompts/path/" +
 		c.encodePath(path)

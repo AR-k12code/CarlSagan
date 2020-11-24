@@ -2,7 +2,9 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -12,8 +14,14 @@ import (
 
 	"github.com/9072997/jgh"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/mitchellh/hashstructure"
 	"github.com/natefinch/atomic"
 )
+
+type reportIdentifier struct {
+	Path          []string
+	PromptAnswers map[string]string
+}
 
 func getCacheDir() string {
 	// get the directory of this executable
@@ -49,9 +57,13 @@ func getUsageFile() string {
 	return usageFile
 }
 
-func recordUse(path []string) {
+func recordUse(path []string, promptAnswers map[string]string) {
 	usageFile := getUsageFile()
+	hash := pathHash(path, promptAnswers)
 	pathStr := pathToString(path)
+	answersJSON, err := json.Marshal(promptAnswers)
+	jgh.PanicOnErr(err)
+	lastUsed := time.Now().Unix()
 
 	// try 3 times in case we get "file in use"
 	success, msg := jgh.Try(1, 3, false, "", func() bool {
@@ -61,15 +73,27 @@ func recordUse(path []string) {
 		defer db.Close()
 
 		// create table if it does not exist
-		query, err := db.Prepare("CREATE TABLE IF NOT EXISTS usage (path TEXT PRIMARY KEY, lastUsed INTEGER)")
+		query, err := db.Prepare(`
+			CREATE TABLE IF NOT EXISTS usage (
+				hash TEXT PRIMARY KEY,
+				path TEXT NOT NULL,
+				promptAnswers TEXT NULL,
+				lastUsed INTEGER NOT NULL
+			)
+		`)
 		jgh.PanicOnErr(err)
 		_, err = query.Exec()
 		jgh.PanicOnErr(err)
 
 		// set last Used time for given hash to now
-		query, err = db.Prepare("INSERT OR REPLACE INTO usage (path, lastUsed) VALUES (?, ?)")
+		query, err = db.Prepare(`
+			INSERT OR REPLACE INTO usage
+				(hash, path, promptAnswers, lastUsed)
+			VALUES
+				(?, ?, ?, ?)
+		`)
 		jgh.PanicOnErr(err)
-		_, err = query.Exec(pathStr, time.Now().Unix())
+		_, err = query.Exec(hash, pathStr, answersJSON, lastUsed)
 		jgh.PanicOnErr(err)
 		return true
 	})
@@ -84,7 +108,7 @@ func warmCache(usedWithin uint) {
 	// get the mimimum "last used" value for an item to be warmed
 	minTimestamp := time.Now().Unix() - int64(usedWithin)
 
-	var pathsToWarm [][]string
+	var reportsToWarm []reportIdentifier
 	// try 3 times in case we get "file in use"
 	jgh.Try(1, 3, true, "", func() bool {
 		// open database
@@ -93,39 +117,55 @@ func warmCache(usedWithin uint) {
 		defer db.Close()
 
 		// create table if it does not exist
-		query, err := db.Prepare("CREATE TABLE IF NOT EXISTS usage (path TEXT PRIMARY KEY, lastUsed INTEGER)")
+		query, err := db.Prepare(`
+			CREATE TABLE IF NOT EXISTS usage (
+				hash TEXT PRIMARY KEY,
+				path TEXT NOT NULL,
+				promptAnswers TEXT NULL,
+				lastUsed INTEGER NOT NULL
+			)
+		`)
 		jgh.PanicOnErr(err)
 		_, err = query.Exec()
 		jgh.PanicOnErr(err)
 
 		// get recently used items
-		query, err = db.Prepare("SELECT path FROM usage WHERE lastUsed >= ?")
+		query, err = db.Prepare(
+			"SELECT path, promptAnswers FROM usage WHERE lastUsed >= ?",
+		)
 		jgh.PanicOnErr(err)
 		rows, err := query.Query(minTimestamp)
 		jgh.PanicOnErr(err)
 		defer rows.Close()
 		for rows.Next() {
-			var pathStr string
-			err := rows.Scan(&pathStr)
+			var pathStr, answersJSON string
+			err := rows.Scan(&pathStr, &answersJSON)
 			jgh.PanicOnErr(err)
-			// convert single string back to array of path components
-			path := strings.Split(pathStr, "/")
-			pathsToWarm = append(pathsToWarm, path)
+			// de-serialize path and prompt answers
+			path := ParsePath(pathStr)
+			var promptAnswers map[string]string
+			err = json.Unmarshal([]byte(answersJSON), &promptAnswers)
+			jgh.PanicOnErr(err)
+
+			reportsToWarm = append(reportsToWarm, reportIdentifier{
+				Path:          path,
+				PromptAnswers: promptAnswers,
+			})
 		}
 
 		return true
 	})
 
 	// warm each path
-	for _, path := range pathsToWarm {
+	for _, report := range reportsToWarm {
 		if !runningAsCGI {
-			log.Println(path)
+			log.Println(report)
 		}
 		// ignore errors
 		success, msg := jgh.Try(0, 1, false, "", func() bool {
 			// we warm the cache by just running through the normal steps to
 			// prepare a response, but we specify that the data must be new
-			PrepareResponse(false, path, 0)
+			PrepareResponse(false, report.Path, report.PromptAnswers, 0)
 			return true
 		})
 		if !success && !runningAsCGI {
@@ -134,9 +174,15 @@ func warmCache(usedWithin uint) {
 	}
 }
 
-func pathHash(path []string) string {
-	pathString := pathToString(path)
-	return jgh.MD5(pathString)
+// BUG(jon): What are the implications of this not being a trusted one-way
+// function?
+func pathHash(path []string, promptAnswers map[string]string) string {
+	hash, err := hashstructure.Hash(reportIdentifier{
+		Path:          path,
+		PromptAnswers: promptAnswers,
+	}, &hashstructure.HashOptions{ZeroNil: true})
+	jgh.PanicOnErr(err)
+	return fmt.Sprintf("%016X", hash)
 }
 
 // deletes files older than config.MaxAge from the cache

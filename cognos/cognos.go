@@ -226,10 +226,6 @@ func (c Session) Request(method string, link string, reqBody string) (respBody s
 			req.Header.Set("Content-Type", mimeType)
 		}
 
-		// Does this help?? TODO
-		req.Header.Set("Accept", "*/*")
-		req.Header.Set("User-Agent", "insomnia/2020.4.2")
-
 		resp, err := c.client.Do(req)
 		jgh.PanicOnErr(err)
 		defer resp.Body.Close()
@@ -299,8 +295,27 @@ func (c Session) encodePath(path []string) string {
 // DownloadReportCSV returns a string containing CSV data for a cognos report.
 // This function triggers the execution of the report, and may take a while
 // to return.
-func (c Session) DownloadReportCSV(path []string) string {
+func (c Session) DownloadReportCSV(
+	path []string,
+	promptAnswers map[string]string,
+) string {
 	reportURL := "/ibmcognos/bi/v1/disp/rds/outputFormat/path/" +
 		c.encodePath(path) + "/CSV?async=OFF"
+
+	// make sure all prompts were answered
+	prompts := c.ListReportPrompts(path)
+	for _, prompt := range prompts {
+		_, exists := promptAnswers[prompt]
+		if !exists {
+			panic("No response provided for report prompt: " + prompt)
+		}
+	}
+
+	if promptAnswers != nil {
+		// add the provided answers to the URL
+		answersXML := makeAnswersXML(promptAnswers)
+		reportURL += "&xmlData=" + url.QueryEscape(answersXML)
+	}
+
 	return c.Request("GET", reportURL, "")
 }

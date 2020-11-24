@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
+	"mime"
 	"net/http"
 	"net/http/cgi"
 	"os"
@@ -14,6 +16,50 @@ import (
 
 	"github.com/9072997/jgh"
 )
+
+// read key-value pairs which may be submitted 1 of 4 ways with a request
+// * in the URL as params
+// * application/x-www-form-urlencoded
+// * multipart/form-data
+// * JSON in the request body
+func getFormValues(request *http.Request) map[string]string {
+	values := make(map[string]string)
+	reqTypeHeader := request.Header.Get("Content-Type")
+	var reqBodyType string
+	if len(reqTypeHeader) != 0 {
+		var err error
+		reqBodyType, _, err = mime.ParseMediaType(reqTypeHeader)
+		jgh.PanicOnErr(err)
+	}
+
+	// for JSON POST data (REST style)
+	if strings.HasSuffix(reqBodyType, "json") {
+		err := json.NewDecoder(request.Body).Decode(&values)
+		jgh.PanicOnErr(err)
+	}
+
+	// this handles GET parameters and application/x-www-form-urlencoded
+	// and is safe to do unconditionally
+	request.ParseForm()
+
+	// multipart/form-data
+	if reqBodyType == "multipart/form-data" {
+		// max 10mb in memory
+		err := request.ParseMultipartForm(10 * 1000 * 1000)
+		jgh.PanicOnErr(err)
+		defer request.MultipartForm.RemoveAll()
+		for k, v := range request.MultipartForm.Value {
+			values[k] = v[0]
+		}
+	}
+
+	// copy values from URL and POST form to values
+	for k, v := range request.Form {
+		values[k] = v[0]
+	}
+
+	return values
+}
 
 func handlerFunc(response http.ResponseWriter, request *http.Request) {
 	// if we panic, return a 500 and log error
@@ -64,7 +110,9 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 		// check this before authorization in case we need to strip .json
 		asJSON := false // default to CSV
 		// check "Accept" header
-		acceptMimeType := request.Header.Get("Accept")
+		acceptHeader := request.Header.Get("Accept")
+		acceptMimeType, _, err := mime.ParseMediaType(acceptHeader)
+		jgh.PanicOnErr(err)
 		if strings.HasSuffix(acceptMimeType, "json") {
 			asJSON = true
 		}
@@ -87,6 +135,9 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 			jgh.PanicOnErr(err)
 			return true
 		}
+
+		// prompt answers can come in 4 ways (see function comment)
+		promptAnswers := getFormValues(request)
 
 		// determine the max age allowed by the request headers.
 		ccHeader := strings.ToLower(request.Header.Get("Cache-Control"))
@@ -122,10 +173,10 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 
 		// record that this report was used so it will get refreshed when
 		// the cache is warmed
-		recordUse(path)
+		recordUse(path, promptAnswers)
 
 		// do the cognos requests
-		respBody := PrepareResponse(asJSON, path, maxAge)
+		respBody := PrepareResponse(asJSON, path, promptAnswers, maxAge)
 
 		// set the content type
 		if asJSON {
@@ -142,7 +193,7 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 		contentLength := strconv.FormatInt(int64(len([]byte(respBody))), 10)
 		response.Header().Set("Content-Length", contentLength)
 		// send actual data
-		_, err := response.Write([]byte(respBody))
+		_, err = response.Write([]byte(respBody))
 		jgh.PanicOnErr(err)
 		return true
 	})
