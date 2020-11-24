@@ -293,7 +293,7 @@ func (c Session) encodePath(path []string) string {
 	for i := range path {
 		path[i] = cognosEscape(path[i])
 	}
-	pathStr := strings.Join(path, "/")
+	return strings.Join(path, "/")
 }
 
 // DownloadReportCSV returns a string containing CSV data for a cognos report.
@@ -301,6 +301,6 @@ func (c Session) encodePath(path []string) string {
 // to return.
 func (c Session) DownloadReportCSV(path []string) string {
 	reportURL := "/ibmcognos/bi/v1/disp/rds/outputFormat/path/" +
-		c.encodePath(path) + "/CSV?v=3&async=OFF"
+		c.encodePath(path) + "/CSV?async=OFF"
 	return c.Request("GET", reportURL, "")
 }
