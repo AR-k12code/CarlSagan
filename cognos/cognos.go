@@ -286,10 +286,12 @@ func (c Session) encodePath(path []string) string {
 		)
 	}
 
+	var encodedPath []string
 	for i := range path {
-		path[i] = cognosEscape(path[i])
+		encodedPath = append(encodedPath, cognosEscape(path[i]))
 	}
-	return strings.Join(path, "/")
+
+	return strings.Join(encodedPath, "/")
 }
 
 // DownloadReportCSV returns a string containing CSV data for a cognos report.
