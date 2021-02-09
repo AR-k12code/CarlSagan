@@ -109,11 +109,9 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 		// did the client want csv or json
 		// check this before authorization in case we need to strip .json
 		asJSON := false // default to CSV
-		// check "Accept" header
-		acceptHeader := request.Header.Get("Accept")
-		acceptMimeType, _, err := mime.ParseMediaType(acceptHeader)
-		jgh.PanicOnErr(err)
-		if strings.HasSuffix(acceptMimeType, "json") {
+		// this is ugly, but parsing is hard
+		acceptHeader := strings.ToLower(request.Header.Get("Accept"))
+		if strings.Contains(acceptHeader, "application/json") {
 			asJSON = true
 		}
 		// check for .json in last path component
@@ -193,7 +191,7 @@ func handlerFunc(response http.ResponseWriter, request *http.Request) {
 		contentLength := strconv.FormatInt(int64(len([]byte(respBody))), 10)
 		response.Header().Set("Content-Length", contentLength)
 		// send actual data
-		_, err = response.Write([]byte(respBody))
+		_, err := response.Write([]byte(respBody))
 		jgh.PanicOnErr(err)
 		return true
 	})

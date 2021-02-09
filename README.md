@@ -98,7 +98,7 @@ Google it. I don't know why you would need this one, but it's there if you do.
 This is the default. Reports are the raw data as returned from Cognos.
 
 #### JSON
-You can get JSON by appending `.json` to the URL or using an `Accept` header that ends in "json". Reports are represented as an array of objects with each object corresponding to a row. This was designed for use with [Invoke-RestMethod](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/Invoke-RestMethod).
+You can get JSON by appending `.json` to the URL or using an `Accept: application/json` header. Reports are represented as an array of objects with each object corresponding to a row. This was designed for use with [Invoke-RestMethod](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/Invoke-RestMethod).
 
 Each object corresponds to a row in the report. We will attempt to automatically convert to booleans or numbers, but we will only do so if we can convert all data in a column to that type. For all data types we strip trailing spaces.
 
