@@ -63,7 +63,13 @@ func makeNamespaceAndDSN(namespace, dsn string) string {
 	n.Parameters[0].Value = "logonAs"
 	n.Parameters[1].Name = "CAMNamespace"
 	n.Parameters[1].Value = namespace
-	n.Parameters[2].Name = "dsn"
+
+	// eFinance (but not eSchool) calls dsn "spi_db_name" now
+	if strings.EqualFold(namespace, "efp") {
+		n.Parameters[2].Name = "spi_db_name"
+	} else {
+		n.Parameters[2].Name = "dsn"
+	}
 	n.Parameters[2].Value = dsn
 
 	payloadStr, err := json.Marshal(n)
